@@ -15,7 +15,19 @@ module.exports = function(grunt) {
       options: {
         port: 8000,
         hostname: '*',
-        livereload: 35728
+        livereload: 35728,
+        middleware: function(connect, options, middlewares) {
+          // inject a custom middleware into the array of default middlewares 
+          middlewares.unshift(function(req, res, next) {
+            if (req.url !== '/freenoker') {
+              return next();
+            }
+ 
+            res.end('<html><head></head><body>hello, freenoker</body></html>');
+          });
+ 
+          return middlewares;
+        },
       },
       server: {
         options: {
@@ -72,6 +84,9 @@ module.exports = function(grunt) {
     watch: {
       gruntfile: {
         files: '<%= jshint.gruntfile.src %>',
+        options: {
+          reload: true
+        },
         tasks: ['jshint:gruntfile']
       },
       lib_test: {
