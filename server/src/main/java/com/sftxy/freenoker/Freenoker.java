@@ -13,6 +13,7 @@ import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.logging.Logger;
 
 import freemarker.cache.FileTemplateLoader;
 import freemarker.template.Configuration;
@@ -21,6 +22,7 @@ import freemarker.template.TemplateException;
 import freemarker.template.TemplateExceptionHandler;
 
 public class Freenoker {
+    private static Logger logger = Logger.getLogger(Freenoker.class.getCanonicalName());
 
     private static final int DEFAULT_PORT = 65384;
 
@@ -80,7 +82,7 @@ public class Freenoker {
         try {
             server = AsynchronousServerSocketChannel.open().bind(localAddress);
         } catch (IOException e) {
-            System.out.println("failed to init server, error: " + e.getLocalizedMessage());
+            logger.warning("failed to init server, error: " + e.getLocalizedMessage());
         }
 
         if (null == server) {
@@ -92,12 +94,12 @@ public class Freenoker {
             execute();
         } catch (Exception e) {
             running = false;
-            System.out.println("exception occured when executing");
+            logger.warning("exception occured when executing: " + e.getLocalizedMessage());
         } finally {
             try {
                 server.close();
             } catch (IOException e) {
-                System.out.println("failed to close server, error: " + e.getLocalizedMessage());
+                logger.warning("failed to close server, error: " + e.getLocalizedMessage());
             }
         }
     }
@@ -119,7 +121,7 @@ public class Freenoker {
                 worker.write(ByteBuffer.wrap(out.toByteArray()));
             } catch (ExecutionException | InterruptedException | IOException | TemplateException e) {
                 String error = "failed to get data, error: " + e.getLocalizedMessage();
-                System.out.println(error);
+                logger.warning(error);
                 if (worker != null) {
                     worker.write(ByteBuffer.wrap(error.getBytes()));
                 }
@@ -128,7 +130,7 @@ public class Freenoker {
                     try {
                         worker.close();
                     } catch (IOException e) {
-                        System.out.println("failed to close worker, error: " + e.getLocalizedMessage());
+                        logger.warning("failed to close worker, error: " + e.getLocalizedMessage());
                     }
                 }
             }
