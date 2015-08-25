@@ -8,16 +8,20 @@
 
 ### 第一阶段
 
-Node.js(客户端)和Java(服务端)之间简单的socket通信。
+<del>Node.js(客户端)和Java(服务端)之间简单的socket通信。</del>
 
 ### 第二阶段
 
-Freemarker的引入，template的支持。
+<del>Freemarker的引入，template的支持。</del>
 
 ### 第三阶段
 
-grunt/glup的引入
+<del>grunt/glup的引入</del>
 
 ### 第四阶段
 
 layout/data的引入
+
+### 第五阶段
+
+使用长链接方式进行通讯
