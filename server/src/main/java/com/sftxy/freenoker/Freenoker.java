@@ -8,11 +8,13 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
+import java.nio.channels.CompletionHandler;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import freemarker.cache.FileTemplateLoader;
@@ -32,6 +34,7 @@ public class Freenoker {
 
     private Configuration config;
 
+    private AsynchronousChannelGroup group;
     private AsynchronousServerSocketChannel server;
 
     private boolean running;
@@ -54,7 +57,6 @@ public class Freenoker {
         File file = new File(templateLoaderPath);
         FileTemplateLoader templateLoader = null;
         try {
-            
             templateLoader = new FileTemplateLoader(file);
         } catch (IOException e) {
             throw new IllegalArgumentException("configured templateLoaderPath is not a valid file path, error: " + e.getLocalizedMessage());
@@ -79,19 +81,22 @@ public class Freenoker {
 
     private void start() {
         InetSocketAddress localAddress = new InetSocketAddress(port);
+        
         try {
-            server = AsynchronousServerSocketChannel.open().bind(localAddress);
+            group = AsynchronousChannelGroup.withThreadPool(Executors.newSingleThreadExecutor());
+            server = AsynchronousServerSocketChannel.open(group).bind(localAddress);
         } catch (IOException e) {
             logger.warning("failed to init server, error: " + e.getLocalizedMessage());
         }
 
-        if (null == server) {
+        if (null == group || null == server) {
             return;
         }
 
         running = true;
         try {
-            execute();
+            server.accept(null, acceptHandler);
+            group.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
         } catch (Exception e) {
             running = false;
             logger.warning("exception occured when executing: " + e.getLocalizedMessage());
@@ -104,38 +109,75 @@ public class Freenoker {
         }
     }
 
-    private void execute() {
-        while (running) {
-            Future<AsynchronousSocketChannel> acceptFuture = server.accept();
-            AsynchronousSocketChannel worker = null;
-            try {
-                worker = acceptFuture.get();
-                ByteBuffer buffer = ByteBuffer.allocate(32);
-                worker.read(buffer).get();
+    private CompletionHandler<AsynchronousSocketChannel, Void> acceptHandler = new CompletionHandler<AsynchronousSocketChannel, Void>() {
+        @Override
+        public void completed(AsynchronousSocketChannel worker, Void attachment) {
+            server.accept(null, this);
+            ByteBuffer buffer = ByteBuffer.allocate(32);
+            worker.read(buffer, null, new CompletionHandler<Integer, Void>() {
 
-                String tmplName = new String(buffer.array()).trim();
-                Template template = config.getTemplate(tmplName + ".ftl");
-                ByteArrayOutputStream out = new ByteArrayOutputStream(2048);
-                Writer writer = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
-                template.process(null, writer);
-                worker.write(ByteBuffer.wrap(out.toByteArray()));
-            } catch (ExecutionException | InterruptedException | IOException | TemplateException e) {
-                String error = "failed to get data, error: " + e.getLocalizedMessage();
-                logger.warning(error);
-                if (worker != null) {
-                    worker.write(ByteBuffer.wrap(error.getBytes()));
+                @Override
+                public void completed(Integer result, Void attachment) {
+                    if (result < 0) {
+                        buffer.clear();
+                        try {
+                            worker.close();
+                        } catch (IOException e) {
+                            logger.info("error occured when close worker, error: " + e.getLocalizedMessage());
+                        }
+                        return;
+                    }
+
+                    buffer.clear();
+                    worker.read(buffer, null, this);
+
+                    String tmplName = new String(buffer.array()).trim();
+                    Template template = null;
+                    try {
+                        template = config.getTemplate(tmplName + ".ftl");
+                    } catch (IOException e) {
+                        String error = "incorrect template name, error: " + e.getLocalizedMessage();
+                        logger.warning(error);
+                        worker.write(ByteBuffer.wrap(error.getBytes()));
+                    }
+
+                    if (null == template) {
+                        return;
+                    }
+
+                    ByteArrayOutputStream out = new ByteArrayOutputStream(2048);
+                    Writer writer = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
+                    try {
+                        template.process(null, writer);
+                        worker.write(ByteBuffer.wrap(out.toByteArray()));
+                    } catch (TemplateException | IOException e) {
+                        String error = "failed to process template, error: " + e.getLocalizedMessage();
+                        logger.warning(error);
+                        worker.write(ByteBuffer.wrap(out.toByteArray()));
+                    }
                 }
-            } finally {
-                if (null != worker) {
+
+                @Override
+                public void failed(Throwable exc, Void attachment) {
+                    String error = "failed when read buffer, error: " + exc.getLocalizedMessage();
+                    logger.warning(error);
+
+                    buffer.clear();
                     try {
                         worker.close();
                     } catch (IOException e) {
-                        logger.warning("failed to close worker, error: " + e.getLocalizedMessage());
+                        logger.info("error occured when close worker, error: " + e.getLocalizedMessage());
                     }
                 }
-            }
+
+            });
         }
-    }
+
+        @Override
+        public void failed(Throwable exc, Void attachment) {
+            logger.warning("failed when accept connection, error: " + exc.getLocalizedMessage());
+        }
+    };
 
     public boolean isRunning() {
         return running;
