@@ -1,11 +1,23 @@
+var path = require('path');
+var net = require('net');
+
 /*global module:false*/
 module.exports = function(grunt) {
-  var path = require('path');
-  var net = require('net');
-  var HOST = '127.0.0.1';
-  var PORT = 65384;
-  var excludes = ['.js', '.ico', '.css'];
+  var Freenoker = {
+    port: 65384,
+    excludes: ['.ico', '.js', '.css']
+  };
+
   var client = new net.Socket();
+
+  client.connect(Freenoker.port, function() {
+    grunt.log.writeln('Connected to freenoker server at port ' + Freenoker.port);
+  });
+  client.on('data', function(data) {
+    Freenoker.res.end(data);
+    grunt.log.writeln(new Date().getTime())
+  });
+
   // Project configuration.
   grunt.initConfig({
     // Metadata.
@@ -24,21 +36,16 @@ module.exports = function(grunt) {
         middleware: function(connect, options, middlewares) {
           // inject a custom middleware into the array of default middlewares 
           middlewares.unshift(function(req, res, next) {
+            grunt.log.writeln(new Date().getTime())
             var ext = path.extname(req.url);
-            if (excludes.indexOf(ext) >= 0) {
+            if (Freenoker.excludes.indexOf(ext) >= 0) {
               return next();
-            }
+            } else {
+              Freenoker.req = req;
+              Freenoker.res = res;
 
-            client.connect(PORT, HOST, function() {
               client.write(req.url);
-            });
-            client.on('data', function(data) {
-              res.end(data);
-              client.destroy();
-            });
-            client.on('close', function() {
-              client.destroy();
-            });
+            }
           });
  
           return middlewares;
