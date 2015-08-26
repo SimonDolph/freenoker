@@ -128,10 +128,15 @@ public class Freenoker {
                         return;
                     }
 
+                    byte[] content = new byte[result];
+                    for (int i = 0; i < result; i++) {
+                        content[i] = buffer.get(i);
+                    }
+
                     buffer.clear();
                     worker.read(buffer, null, this);
 
-                    String tmplName = new String(buffer.array()).trim();
+                    String tmplName = new String(content).trim();
                     Template template = null;
                     try {
                         template = config.getTemplate(tmplName + ".ftl");
