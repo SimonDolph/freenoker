@@ -1,87 +1,51 @@
 package com.sftxy.freenoker;
 
-import java.io.BufferedWriter;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
-import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
-import freemarker.cache.FileTemplateLoader;
-import freemarker.template.Configuration;
-import freemarker.template.Template;
-import freemarker.template.TemplateException;
-import freemarker.template.TemplateExceptionHandler;
+import com.sftxy.freenoker.engine.TemplateEngine;
 
 public class Freenoker {
     private static Logger logger = Logger.getLogger(Freenoker.class.getCanonicalName());
 
     private static final int DEFAULT_PORT = 65384;
 
-    private int port;
-
-    private String templateLoaderPath;
-
-    private Configuration config;
+    private int port = DEFAULT_PORT;
 
     private AsynchronousChannelGroup group;
     private AsynchronousServerSocketChannel server;
 
+    private TemplateEngine tmplEngine;
+
     private boolean running;
 
     public static void main(String[] args) {
-        if (args.length == 0) {
-            throw new IllegalArgumentException("templateLoaderPath must be provided");
-        }
+        Map<String, String> parsedArgs = parseArgs(args);
 
-        Freenoker freenoker = null;
-        if (args.length == 2) {
-            freenoker = new Freenoker(Integer.parseInt(args[0]), args[1]);
-        } else {
-            freenoker = new Freenoker(args[0]);
-        }
-        freenoker.initTemplateEngine().start();
+        Freenoker freenoker = new Freenoker();
+
+        freenoker.initTemplateEngine(parsedArgs);
+
+        freenoker.start();
     }
 
-    private Freenoker initTemplateEngine() {
-        File file = new File(templateLoaderPath);
-        FileTemplateLoader templateLoader = null;
-        try {
-            templateLoader = new FileTemplateLoader(file);
-        } catch (IOException e) {
-            throw new IllegalArgumentException("configured templateLoaderPath is not a valid file path, error: " + e.getLocalizedMessage());
-        }
-
-        config = new Configuration(Configuration.VERSION_2_3_23);
-        config.setDefaultEncoding("UTF-8");
-        config.setTemplateExceptionHandler(TemplateExceptionHandler.HTML_DEBUG_HANDLER);
-        config.setTemplateLoader(templateLoader);
-
-        return this;
-    }
-
-    public Freenoker(String templateLoaderPath) {
-        this(DEFAULT_PORT, templateLoaderPath);
-    }
-
-    public Freenoker(int port, String templateLoaderPath) {
-        this.port = port;
-        this.templateLoaderPath = templateLoaderPath;
+    private void initTemplateEngine(Map<String, String> args) {
+        tmplEngine = new TemplateEngine();
+        tmplEngine.init(args);
     }
 
     private void start() {
         InetSocketAddress localAddress = new InetSocketAddress(port);
-        
         try {
             group = AsynchronousChannelGroup.withThreadPool(Executors.newSingleThreadExecutor());
             server = AsynchronousServerSocketChannel.open(group).bind(localAddress);
@@ -112,10 +76,10 @@ public class Freenoker {
     private CompletionHandler<AsynchronousSocketChannel, Void> acceptHandler = new CompletionHandler<AsynchronousSocketChannel, Void>() {
         @Override
         public void completed(AsynchronousSocketChannel worker, Void attachment) {
-            server.accept(null, this);
+            server.accept(null, this); // listen to next request
+
             ByteBuffer buffer = ByteBuffer.allocate(32);
             worker.read(buffer, null, new CompletionHandler<Integer, Void>() {
-
                 @Override
                 public void completed(Integer result, Void attachment) {
                     if (result < 0) {
@@ -128,38 +92,13 @@ public class Freenoker {
                         return;
                     }
 
-                    byte[] content = new byte[result];
-                    for (int i = 0; i < result; i++) {
-                        content[i] = buffer.get(i);
-                    }
+                    String tmplName = buildTmplName(result, buffer);
 
                     buffer.clear();
-                    worker.read(buffer, null, this);
+                    worker.read(buffer, null, this); // keep live
 
-                    String tmplName = new String(content).trim();
-                    Template template = null;
-                    try {
-                        template = config.getTemplate(tmplName + ".ftl");
-                    } catch (IOException e) {
-                        String error = "incorrect template name, error: " + e.getLocalizedMessage();
-                        logger.warning(error);
-                        worker.write(ByteBuffer.wrap(error.getBytes()));
-                    }
-
-                    if (null == template) {
-                        return;
-                    }
-
-                    ByteArrayOutputStream out = new ByteArrayOutputStream(2048);
-                    Writer writer = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
-                    try {
-                        template.process(null, writer);
-                        worker.write(ByteBuffer.wrap(out.toByteArray()));
-                    } catch (TemplateException | IOException e) {
-                        String error = "failed to process template, error: " + e.getLocalizedMessage();
-                        logger.warning(error);
-                        worker.write(ByteBuffer.wrap(out.toByteArray()));
-                    }
+                    byte[] content = tmplEngine.render(tmplName);
+                    worker.write(ByteBuffer.wrap(content));
                 }
 
                 @Override
@@ -174,7 +113,6 @@ public class Freenoker {
                         logger.info("error occured when close worker, error: " + e.getLocalizedMessage());
                     }
                 }
-
             });
         }
 
@@ -192,4 +130,21 @@ public class Freenoker {
         this.port = port;
     }
 
+    private static String buildTmplName(Integer result, ByteBuffer buffer) {
+        byte[] content = new byte[result];
+        for (int i = 0; i < result; i++) {
+            content[i] = buffer.get(i);
+        }
+
+        return new String(content).trim();
+    }
+
+    private static Map<String, String> parseArgs(String[] args) {
+        Map<String, String> map = new HashMap<>();
+        for (String arg : args) {
+            String[] kv = arg.split("=", 2);
+            map.put(kv[0], kv[1]);
+        }
+        return map;
+    }
 }
