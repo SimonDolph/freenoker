@@ -5,13 +5,16 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.logging.Logger;
 
 import freemarker.cache.FileTemplateLoader;
+import freemarker.core.Environment;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
@@ -70,42 +73,55 @@ public class TemplateEngine {
         }
     }
 
-    public byte[] render(String tmplName) {
+    public byte[] render(String tmplName) throws Exception {
         if (enableLayout) {
-            return doLayoutedRender(tmplName);
+            return renderLayoutedTmpl(tmplName);
         } else {
-            return doRender(tmplName);
+            return doRender(null, tmplName);
         }
     }
 
-    private byte[] doLayoutedRender(String tmplName) {
-        return null;//TODO
+    private byte[] renderLayoutedTmpl(String tmplName) throws Exception {
+        Template screenContentTemplate = getTemplate(tmplName);
+        StringWriter sw = new StringWriter();
+        Environment env = screenContentTemplate.createProcessingEnvironment(null, sw);
+        env.process();
+
+        Map<String, Object> model = new HashMap<>();
+        model.put(screenContentKey, sw.toString());
+
+        String layoutToUse = Objects.toString(model.get(layoutKey), layoutLocation);
+
+        return doRender(model, layoutToUse);
     }
 
-    private byte[] doRender(String tmplName) {
+    private byte[] doRender(Map<String, Object> model, String tmplName) throws Exception {
+        Template template = getTemplate(tmplName);
         byte[] content = null;
+        ByteArrayOutputStream out = new ByteArrayOutputStream(2048);
+        Writer writer = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
+        try {
+            template.process(model, writer);
+            content = out.toByteArray();
+        } catch (TemplateException | IOException e) {
+            String error = "failed to process template, error: " + e.getLocalizedMessage();
+            logger.warning(error);
+            throw new Exception(error, e);
+        }
+        return content;
+
+    }
+
+    private Template getTemplate(String tmplName) throws Exception {
         Template template = null;
         try {
             template = config.getTemplate(tmplName + ".ftl");
         } catch (IOException e) {
             String error = "incorrect template name, error: " + e.getLocalizedMessage();
             logger.warning(error);
-            content = error.getBytes(StandardCharsets.UTF_8);
+            throw new Exception(error, e);
         }
-
-        if (null != template) {
-            ByteArrayOutputStream out = new ByteArrayOutputStream(2048);
-            Writer writer = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
-            try {
-                template.process(null, writer);
-                content = out.toByteArray();
-            } catch (TemplateException | IOException e) {
-                String error = "failed to process template, error: " + e.getLocalizedMessage();
-                logger.warning(error);
-                content = error.getBytes(StandardCharsets.UTF_8);
-            }
-        }
-        return content;
+        return template;
     }
 
     public void setTemplateLoaderPath(String templateLoaderPath) {
