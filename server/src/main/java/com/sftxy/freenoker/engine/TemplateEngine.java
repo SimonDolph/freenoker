@@ -8,6 +8,7 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 import freemarker.cache.FileTemplateLoader;
@@ -22,6 +23,16 @@ public class TemplateEngine {
     private String templateLoaderPath;
 
     private Configuration config;
+
+    public static final String DEFAULT_LAYOUT_LOCATION = "_layout.ftl";
+    public static final String DEFAULT_LAYOUT_KEY = "layout";
+    public static final String DEFAULT_SCREEN_CONTENT_KEY = "screen_content";
+
+    private String layoutLocation;
+    private String layoutKey;
+    private String screenContentKey;
+
+    private boolean enableLayout = false;
 
     /**
      * 
@@ -46,9 +57,32 @@ public class TemplateEngine {
         config.setDefaultEncoding("UTF-8");
         config.setTemplateExceptionHandler(TemplateExceptionHandler.HTML_DEBUG_HANDLER);
         config.setTemplateLoader(templateLoader);
+
+        setupLayoutFeature(args);
+    }
+
+    private void setupLayoutFeature(Map<String, String> args) {
+        enableLayout = Boolean.parseBoolean(args.get("enableLayout"));
+        if (enableLayout) {
+            layoutLocation = Objects.toString(args.get("layout"), DEFAULT_LAYOUT_LOCATION);
+            layoutKey = Objects.toString(args.get("layoutKey"), DEFAULT_LAYOUT_KEY);
+            screenContentKey = Objects.toString(args.get("screenContentKey"), DEFAULT_SCREEN_CONTENT_KEY);
+        }
     }
 
     public byte[] render(String tmplName) {
+        if (enableLayout) {
+            return doLayoutedRender(tmplName);
+        } else {
+            return doRender(tmplName);
+        }
+    }
+
+    private byte[] doLayoutedRender(String tmplName) {
+        return null;//TODO
+    }
+
+    private byte[] doRender(String tmplName) {
         byte[] content = null;
         Template template = null;
         try {
@@ -73,4 +107,21 @@ public class TemplateEngine {
         }
         return content;
     }
+
+    public void setTemplateLoaderPath(String templateLoaderPath) {
+        this.templateLoaderPath = templateLoaderPath;
+    }
+
+    public void setLayoutLocation(String layoutLocation) {
+        this.layoutLocation = layoutLocation;
+    }
+
+    public void setLayoutKey(String layoutKey) {
+        this.layoutKey = layoutKey;
+    }
+
+    public void setScreenContentKey(String screenContentKey) {
+        this.screenContentKey = screenContentKey;
+    }
+
 }
