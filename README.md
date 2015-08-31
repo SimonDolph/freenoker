@@ -11,6 +11,6 @@
 
 ## 项目计划：
 
-- freemarker作为模版框架，并未提供layout的功能。接下来将实现前后端都可用的layout功能。
+- <del>freemarker作为模版框架，并未提供layout的功能。接下来将实现前后端都可用的layout功能。</del>
 - 目前版本还没有支持前台mock data。后续需要支持。
 - glup貌似在社区更受好评。将学习glup，并尝试支持。
