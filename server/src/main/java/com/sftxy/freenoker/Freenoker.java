@@ -7,6 +7,7 @@ import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -97,7 +98,12 @@ public class Freenoker {
                     buffer.clear();
                     worker.read(buffer, null, this); // keep live
 
-                    byte[] content = tmplEngine.render(tmplName);
+                    byte[] content = null;
+                    try {
+                        content = tmplEngine.render(tmplName);
+                    } catch (Exception e) {
+                        content = e.getMessage().getBytes(StandardCharsets.UTF_8);
+                    }
                     worker.write(ByteBuffer.wrap(content));
                 }
 
