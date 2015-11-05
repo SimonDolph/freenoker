@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.logging.Logger;
 
 import freemarker.cache.FileTemplateLoader;
+import freemarker.cache.NullCacheStorage;
 import freemarker.core.Environment;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
@@ -60,6 +61,7 @@ public class TemplateEngine {
         config.setDefaultEncoding("UTF-8");
         config.setTemplateExceptionHandler(TemplateExceptionHandler.HTML_DEBUG_HANDLER);
         config.setTemplateLoader(templateLoader);
+        config.setCacheStorage(NullCacheStorage.INSTANCE);
 
         setupLayoutFeature(args);
     }
