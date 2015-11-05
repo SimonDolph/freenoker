@@ -21,7 +21,7 @@ public class Freenoker {
 
     private static final int DEFAULT_PORT = 65384;
 
-    private int port = DEFAULT_PORT;
+    private int port;
 
     private AsynchronousChannelGroup group;
     private AsynchronousServerSocketChannel server;
@@ -33,11 +33,16 @@ public class Freenoker {
     public static void main(String[] args) {
         Map<String, String> parsedArgs = parseArgs(args);
 
-        Freenoker freenoker = new Freenoker();
+        Freenoker freenoker = new Freenoker(parsedArgs);
 
         freenoker.initTemplateEngine(parsedArgs);
 
         freenoker.start();
+    }
+
+    public Freenoker(Map<String, String> parsedArgs) {
+        String portStr = parsedArgs.get("port");
+        this.port = null == portStr ? DEFAULT_PORT : Integer.parseInt(portStr);
     }
 
     private void initTemplateEngine(Map<String, String> args) {
