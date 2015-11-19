@@ -81,10 +81,10 @@ public class Freenoker {
 
     private CompletionHandler<AsynchronousSocketChannel, Void> acceptHandler = new CompletionHandler<AsynchronousSocketChannel, Void>() {
         @Override
-        public void completed(AsynchronousSocketChannel worker, Void attachment) {
+        public void completed(final AsynchronousSocketChannel worker, Void attachment) {
             server.accept(null, this); // listen to next request
 
-            ByteBuffer buffer = ByteBuffer.allocate(32);
+            final ByteBuffer buffer = ByteBuffer.allocate(32);
             worker.read(buffer, null, new CompletionHandler<Integer, Void>() {
                 @Override
                 public void completed(Integer result, Void attachment) {
